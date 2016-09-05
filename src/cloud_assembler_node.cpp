@@ -28,62 +28,71 @@ using namespace std;
 
 int main(int argc, char ** argv) {
 
-    int count = 2000;
-    string pose_stamp;
-    string line;
+    string line1,line2;
+
     ifstream trajectories("CameraTrajectory.txt");
+    if(!trajectories.is_open())
+        return -1;
+
     ifstream associations("associations.txt");
+    if(!associations.is_open())
+        return -1;
 
     MessageReader reader;
     reader.open("orazio_2016_run.txt");
+    BaseMessage* msg = 0;
 
     MessageWriter writer;
     writer.open("orazio_2016_run_corrected.txt");
 
-    BaseMessage* msg = 0;
 
-    if(trajectories.is_open() && associations.is_open()) {
-        while (count > 0) {
-            trajectories >> pose_stamp;
-            float x,y,z,qx,qy,qz,qw;
-            trajectories >> x;
-            trajectories >> y;
-            trajectories >> z;
-            trajectories >> qx;
-            trajectories >> qy;
-            trajectories >> qz;
-            trajectories >> qw;
-            Eigen::Vector3f t(x,y,z);
-            Eigen::Quaternion<float> q(qw,qx,qy,qz);
+    while (getline(trajectories,line1)) {
+        istringstream iss1(line1);
+        string pose_stamp;
+        float x,y,z,qx,qy,qz,qw;
+        iss1 >> pose_stamp;
+        iss1 >> x;
+        iss1 >> y;
+        iss1 >> z;
+        iss1 >> qx;
+        iss1 >> qy;
+        iss1 >> qz;
+        iss1 >> qw;
+        Eigen::Vector3f t(x,y,z);
+        Eigen::Quaternion<float> q(qw,qx,qy,qz);
 
-            string rgb_stamp,rgb_filename,depth_stamp,depth_filename;
-            do {
-                getline(associations,line);
-                istringstream iss(line);
-                iss >> rgb_stamp;
-                iss >> rgb_filename;
-                iss >> depth_stamp;
-                iss >> depth_filename;
-            } while(pose_stamp.find(rgb_stamp) == string::npos);
+        string rgb_stamp,rgb_filename,depth_stamp,depth_filename;
+        do {
+            getline(associations,line2);
+            istringstream iss2(line2);
+            iss2 >> rgb_stamp;
+            iss2 >> rgb_filename;
+            iss2 >> depth_stamp;
+            iss2 >> depth_filename;
+        } while(pose_stamp.find(rgb_stamp) == string::npos);
 
-            bool found = false;
-            while(found == false) {
-                msg = reader.readMessage();
-                msg->untaint();
-                BaseImageMessage* img = dynamic_cast<BaseImageMessage*> (msg);
-                if(img)
-                    if(strcmp(img->topic().c_str(),"/camera/depth/image_raw") == 0 && atof(depth_stamp.c_str())-img->timestamp() == 0) {
-                        img->setOffset(Eigen::Isometry3f::Identity());
-                        Eigen::Isometry3f transform = Eigen::Isometry3f::Identity();
-                        transform.translation() = t;
-                        transform.rotate (q);
-                        img->setOdometry(transform);
-                        found = true;
-                    }   
-            }
-            writer.writeMessage(*msg);
-            count--;
+        bool found = false;
+        while(found == false) {
+            msg = reader.readMessage();
+            msg->untaint();
+            BaseImageMessage* img = dynamic_cast<BaseImageMessage*> (msg);
+            if(img)
+                if(strcmp(img->topic().c_str(),"/camera/depth/image_raw") == 0 && atof(depth_stamp.c_str())-img->timestamp() == 0) {
+                    img->setOffset(Eigen::Isometry3f::Identity());
+                    Eigen::Isometry3f transform = Eigen::Isometry3f::Identity();
+                    transform.translation() = t;
+                    transform.rotate (q);
+                    img->setOdometry(transform);
+                    found = true;
+                }
         }
+        writer.writeMessage(*msg);
     }
+
+    writer.close();
+    reader.close();
+    associations.close();
+    trajectories.close();
+
     return 0;
 }
